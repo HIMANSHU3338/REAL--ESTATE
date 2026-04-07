@@ -16,7 +16,7 @@ import numpy as np
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
@@ -165,7 +165,7 @@ async def get_info() -> EnvInfoResponse:
 
 
 @app.post("/reset")
-async def reset(request: ResetRequest = None) -> ObservationResponse:
+async def reset(request: Optional[ResetRequest] = Body(default=None)) -> ObservationResponse:
     """Reset the environment. Optionally set seed and task."""
     global current_task
 
@@ -184,7 +184,7 @@ async def reset(request: ResetRequest = None) -> ObservationResponse:
 
 
 @app.post("/step")
-async def step(request: StepRequest) -> StepResponse:
+async def step(request: StepRequest = Body(...)) -> StepResponse:
     """Take one step in the environment."""
     action = np.array(request.action, dtype=np.int64)
 
