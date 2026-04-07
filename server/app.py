@@ -89,9 +89,9 @@ async def get_info() -> Dict:
     return {
         "name": "real_estate_rl",
         "version": "1.0.0",
-        "observation_space_shape": list(env.observation_space.shape),
-        "action_space_shape": list(env.action_space.nvec),
-        "episode_length": config.episode_length,
+        "observation_space_shape": [int(x) for x in env.observation_space.shape],
+        "action_space_shape": [int(x) for x in env.action_space.nvec],
+        "episode_length": int(config.episode_length),
         "tasks": [
             {"name": "portfolio-growth", "description": "Maximize portfolio net worth over 120 months"},
             {"name": "risk-management", "description": "Maximize risk-adjusted returns (Sharpe ratio)"},
