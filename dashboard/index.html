@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real Estate RL — Investment Dashboard 🇮🇳</title>
+    <meta name="description" content="Interactive dashboard for Real Estate Reinforcement Learning — Indian market portfolio management with market cycles and agent comparison">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- ─── HEADER ─── -->
+    <header id="main-header">
+        <div class="header-content">
+            <div class="logo-area">
+                <div class="logo-icon">🏠</div>
+                <div>
+                    <h1>Real Estate RL</h1>
+                    <p class="subtitle">AI-Powered Investment Dashboard • Indian Market 🇮🇳</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button id="btn-load-data" class="btn btn-primary" onclick="loadAllData()">
+                    <span class="btn-icon">📂</span> Load Data
+                </button>
+                <button id="btn-run-demo" class="btn btn-secondary" onclick="runSimulation()">
+                    <span class="btn-icon">▶️</span> Simulate
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ─── MAIN CONTENT ─── -->
+    <main id="dashboard">
+
+        <!-- ─── KPI ROW ─── -->
+        <section id="kpi-section" class="section">
+            <div class="kpi-grid">
+                <div class="kpi-card" id="kpi-net-worth">
+                    <div class="kpi-icon">💰</div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Final Net Worth</span>
+                        <span class="kpi-value" id="kpi-nw-value">₹0</span>
+                        <span class="kpi-change positive" id="kpi-nw-change">+0%</span>
+                    </div>
+                </div>
+                <div class="kpi-card" id="kpi-return">
+                    <div class="kpi-icon">📈</div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Total Return</span>
+                        <span class="kpi-value" id="kpi-return-value">0%</span>
+                        <span class="kpi-change" id="kpi-return-ann">Ann. 0%</span>
+                    </div>
+                </div>
+                <div class="kpi-card" id="kpi-sharpe">
+                    <div class="kpi-icon">📊</div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Sharpe Ratio</span>
+                        <span class="kpi-value" id="kpi-sharpe-value">0.000</span>
+                        <span class="kpi-change" id="kpi-sharpe-quality">—</span>
+                    </div>
+                </div>
+                <div class="kpi-card" id="kpi-drawdown">
+                    <div class="kpi-icon">📉</div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Max Drawdown</span>
+                        <span class="kpi-value" id="kpi-dd-value">0%</span>
+                        <span class="kpi-change" id="kpi-dd-risk">—</span>
+                    </div>
+                </div>
+                <div class="kpi-card" id="kpi-properties">
+                    <div class="kpi-icon">🏘️</div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Properties Traded</span>
+                        <span class="kpi-value" id="kpi-prop-value">0 / 0</span>
+                        <span class="kpi-change" id="kpi-prop-detail">Bought / Sold</span>
+                    </div>
+                </div>
+                <div class="kpi-card" id="kpi-reward">
+                    <div class="kpi-icon">🎯</div>
+                    <div class="kpi-info">
+                        <span class="kpi-label">Total Reward</span>
+                        <span class="kpi-value" id="kpi-reward-value">0.000</span>
+                        <span class="kpi-change" id="kpi-reward-detail">Cumulative RL Reward</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── CHARTS ROW 1 ─── -->
+        <section class="section">
+            <div class="chart-grid-2">
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h2>📈 Portfolio Net Worth Over Time</h2>
+                        <div class="card-badge" id="nw-trend-badge">—</div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-net-worth"></canvas>
+                    </div>
+                </div>
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h2>🌡️ Market Regime Timeline</h2>
+                        <div class="regime-legend">
+                            <span class="regime-dot boom"></span> Boom
+                            <span class="regime-dot stable"></span> Stable
+                            <span class="regime-dot recession"></span> Recession
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-regime"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── AGENT COMPARISON ─── -->
+        <section class="section" id="comparison-section">
+            <div class="card">
+                <div class="card-header">
+                    <h2>🏆 Agent Performance Comparison</h2>
+                    <p class="card-subtitle">50 episodes per agent • Indian Market (₹)</p>
+                </div>
+                <div class="comparison-table-wrapper">
+                    <table id="comparison-table" class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th>Agent</th>
+                                <th>Avg Return</th>
+                                <th>Sharpe</th>
+                                <th>Max Drawdown</th>
+                                <th>Win Rate</th>
+                                <th>Avg Net Worth</th>
+                                <th>Best</th>
+                                <th>Worst</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comparison-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── CHARTS ROW 2 ─── -->
+        <section class="section">
+            <div class="chart-grid-2">
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h2>🎮 Action Distribution</h2>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-actions"></canvas>
+                    </div>
+                </div>
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h2>📊 Return Distribution by Agent</h2>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-returns-bar"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── MARKET DETAILS ─── -->
+        <section class="section">
+            <div class="chart-grid-3">
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h2>💹 Interest Rate (RBI)</h2>
+                    </div>
+                    <div class="chart-container-sm">
+                        <canvas id="chart-interest"></canvas>
+                    </div>
+                </div>
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h2>📦 Demand Index</h2>
+                    </div>
+                    <div class="chart-container-sm">
+                        <canvas id="chart-demand"></canvas>
+                    </div>
+                </div>
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h2>💵 Cash Balance (₹)</h2>
+                    </div>
+                    <div class="chart-container-sm">
+                        <canvas id="chart-cashflow"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ─── ACTION LOG ─── -->
+        <section class="section">
+            <div class="card">
+                <div class="card-header">
+                    <h2>📋 Agent Decision Log (Last 20 Months)</h2>
+                    <button class="btn btn-sm" onclick="toggleLog()">Expand / Collapse</button>
+                </div>
+                <div id="action-log" class="action-log">
+                    <p class="placeholder-text">Click "Load Data" or "Simulate" to see agent decisions</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ─── FOOTER ─── -->
+    <footer>
+        <p>🏠 Real Estate RL Environment • Gymnasium + Stable-Baselines3 • Multi-Property Portfolio • Market Regimes • Sharpe-Optimized Reward • Indian Market 🇮🇳</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>

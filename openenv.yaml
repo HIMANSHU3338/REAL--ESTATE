@@ -1,0 +1,106 @@
+# OpenEnv Spec — Real Estate RL Environment
+# Defines tasks, typed models, and server endpoints
+
+name: real_estate_rl
+version: "1.0.0"
+description: >
+  A multi-property real estate investment RL environment.
+  The agent manages a portfolio of up to 5 properties across 3 neighborhoods,
+  navigating market cycles (boom/stable/recession) to maximize risk-adjusted returns.
+
+# ─── Environment Server ──────────────────────────────────────────
+server:
+  image: Dockerfile
+  port: 7860
+  endpoints:
+    reset: /reset
+    step: /step
+    state: /state
+
+# ─── Typed Models ────────────────────────────────────────────────
+models:
+  observation:
+    type: array
+    items: float
+    shape: [69]
+    description: >
+      69-dim vector: [cash, net_worth, regime_onehot(3), rate, demand, inflation,
+      season_sin, season_cos, time_remaining, neighborhood_quality(3),
+      property_slots(5 x 11)]
+
+  action:
+    type: array
+    items: int
+    shape: [5]
+    description: >
+      5 integers in [0,4], one per property slot.
+      0=Hold, 1=Buy, 2=Sell, 3=Raise Rent, 4=Lower Rent
+
+  state:
+    type: object
+    properties:
+      month: int
+      cash: float
+      net_worth: float
+      regime: string
+      interest_rate: float
+      demand_index: float
+      inflation: float
+      num_properties: int
+      portfolio: object
+      market: object
+      episode_progress: float
+
+# ─── Tasks with Graders ──────────────────────────────────────────
+tasks:
+  - name: portfolio-growth
+    description: >
+      Maximize portfolio net worth over a 120-month (10-year) episode.
+      Score = clamp(total_return_pct / 100, 0, 1).
+      A 100%+ return over 10 years earns a perfect score.
+    grader:
+      type: endpoint
+      metric: total_return_pct
+      scoring: |
+        score = max(0.0, min(1.0, total_return_pct / 100.0))
+    max_steps: 120
+    reward_range: [0.0, 1.0]
+
+  - name: risk-management
+    description: >
+      Maximize risk-adjusted returns measured by the annualized Sharpe ratio.
+      Score = clamp(sharpe / 2.0, 0, 1).
+      A Sharpe ratio >= 2.0 earns a perfect score.
+    grader:
+      type: endpoint
+      metric: annualized_sharpe
+      scoring: |
+        score = max(0.0, min(1.0, sharpe / 2.0))
+    max_steps: 120
+    reward_range: [0.0, 1.0]
+
+  - name: market-timing
+    description: >
+      Maximize returns by actively timing buy/sell decisions around
+      market regime transitions (boom/stable/recession).
+      Score combines return (50%), drawdown control (30%), and trading activity (20%).
+    grader:
+      type: endpoint
+      metric: composite
+      scoring: |
+        return_score = max(0.0, min(0.5, total_return_pct / 200.0))
+        dd_score = max(0.0, 0.3 * (1.0 - max_drawdown_pct / 50.0))
+        activity_score = min(0.2, (total_bought + total_sold) * 0.02)
+        score = max(0.0, min(1.0, return_score + dd_score + activity_score))
+    max_steps: 120
+    reward_range: [0.0, 1.0]
+
+# ─── Metadata ────────────────────────────────────────────────────
+metadata:
+  author: Himanshu
+  framework: gymnasium
+  domain: finance
+  market: indian_real_estate
+  episode_length: 120
+  max_properties: 5
+  initial_capital_inr: 20000000
