@@ -1,8 +1,7 @@
 import gradio as gr
 
-def predict(area, price_per_sqft):
-    total = area * price_per_sqft
-    return f"Estimated Property Value: ₹{total}"
+def predict(area, price):
+    return f"Estimated Property Price: ₹{area * price}"
 
 demo = gr.Interface(
     fn=predict,
@@ -11,7 +10,7 @@ demo = gr.Interface(
         gr.Number(label="Price per sqft (₹)")
     ],
     outputs="text",
-    title="Real Estate Price Calculator"
+    title="Real Estate Calculator"
 )
 
 demo.launch()
