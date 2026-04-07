@@ -1,4 +1,4 @@
-gradio>=4.44.0,<4.60.0
+gradio>=4.44.0
 gymnasium>=0.29.0,<1.0.0
 numpy>=1.24.0,<2.0.0
 matplotlib>=3.7.0,<4.0.0
