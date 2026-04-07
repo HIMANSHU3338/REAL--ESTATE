@@ -1,214 +1,112 @@
 """
-Gradio App for Real Estate RL Environment
-Interactive web interface for the Real Estate Investment RL environment.
+Minimal Gradio app for Real Estate RL.
+This app avoids audio processing and works on Hugging Face Spaces.
 """
 
 import gradio as gr
 from pathlib import Path
 import sys
 
-# Add project root to path
+# Add project root to path so env imports work on Spaces
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from env.real_estate_env import RealEstateEnv
 from env.config import EnvConfig
-from agents.baselines import RandomAgent, BuyAndHoldAgent, RuleBasedAgent
 
-# Global environment instance
 env = None
-current_agent = None
+
 
 def initialize_environment():
-    """Initialize the RL environment."""
     global env
     if env is None:
-        config = EnvConfig()
-        env = RealEstateEnv(config=config)
+        env = RealEstateEnv(config=EnvConfig())
     return env
 
-def reset_environment(seed=None):
-    """Reset the environment and return initial state."""
-    global env, current_agent
-    env = initialize_environment()
 
+def format_observation(obs, info):
+    net_worth = obs[0] * 1_000_000
+    cash = obs[1] * 1_000_000
+    step = int(obs[2])
+    regime = ["Stable", "Boom", "Bust"][int(obs[-1])]
+
+    lines = [
+        f"**Step {step} — Market: {regime}**",
+        f"**Portfolio Value:** ₹{net_worth:,.0f}",
+        f"**Cash:** ₹{cash:,.0f}",
+        "",
+        "**Properties:**",
+    ]
+
+    for i in range(5):
+        offset = 3 + i * 13
+        if obs[offset] > 0:
+            value = obs[offset] * 1_000_000
+            mortgage = obs[offset + 1] * 1_000_000
+            rent = obs[offset + 2] * 1_000
+            lines.append(
+                f"Property {i+1}: ₹{value:,.0f} | Mortgage ₹{mortgage:,.0f} | Rent ₹{rent:,.0f}"
+            )
+        else:
+            lines.append(f"Property {i+1}: Not owned")
+
+    lines += [
+        "",
+        "**Market Indicators:**",
+        f"- Interest rate: {obs[-3]:.1%}",
+        f"- Demand index: {obs[-2]:.2f}",
+    ]
+
+    return "\n".join(lines)
+
+
+def reset_environment(seed=None):
+    env = initialize_environment()
     if seed is not None:
         obs, info = env.reset(seed=int(seed))
     else:
         obs, info = env.reset()
-
-    current_agent = None
     return format_observation(obs, info)
 
-def format_observation(obs, info):
-    """Format observation data for display."""
-    net_worth = obs[0] * 1000000  # Scale back to rupees
-    cash = obs[1] * 1000000
-    step = obs[2]
 
-    # Property values
-    property_info = []
-    for i in range(5):
-        prop_idx = 3 + i * 13
-        if obs[prop_idx] > 0:  # Property owned
-            value = obs[prop_idx] * 1000000
-            mortgage = obs[prop_idx + 1] * 1000000
-            rent = obs[prop_idx + 2] * 1000
-            property_info.append(f"Property {i+1}: ₹{value:,.0f} (Mortgage: ₹{mortgage:,.0f}, Rent: ₹{rent:,.0f})")
-        else:
-            property_info.append(f"Property {i+1}: Not owned")
-
-    market_regime = ["Stable", "Boom", "Bust"][int(obs[-1])]
-
-    result = f"""
-**Step {int(step)} - Market: {market_regime}**
-
-**Portfolio Value:** ₹{net_worth:,.0f}
-**Cash:** ₹{cash:,.0f}
-
-**Properties:**
-{"\n".join(property_info)}
-
-**Market Indicators:**
-- Interest Rate: {obs[-3]:.1%}
-- Demand Index: {obs[-2]:.2f}
-"""
-
-    return result
-
-def take_action(action_str):
-    """Take an action in the environment."""
-    global env
-
-    if env is None:
-        return "Please reset the environment first!"
-
+def take_action(actions):
+    env = initialize_environment()
     try:
-        # Parse action string like "0,1,2,3,4" into list
-        action = [int(x.strip()) for x in action_str.split(',')]
+        action = [int(x.strip()) for x in actions.split(",")]
         if len(action) != 5:
-            return "Please provide exactly 5 actions (0-4) separated by commas!"
+            return "Enter exactly 5 comma-separated actions (0-4)."
 
         obs, reward, done, truncated, info = env.step(action)
-
         result = format_observation(obs, info)
-        result += f"\n**Reward:** {reward:.3f}"
-        result += f"\n**Episode Done:** {done or truncated}"
-
-        if done or truncated:
-            result += "\n\n🎯 Episode completed! Reset to start a new episode."
-
+        result += f"\n\n**Reward:** {reward:.3f}"
+        result += f"\n**Done:** {done or truncated}"
         return result
-
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error: {e}"
 
-def run_baseline_agent(agent_type, num_episodes=1):
-    """Run a baseline agent for evaluation."""
-    global env
 
-    env = initialize_environment()
+def create_ui():
+    with gr.Blocks(title="Real Estate Investment RL") as demo:
+        gr.Markdown("# 🏠 Real Estate Investment RL")
+        gr.Markdown("Simple Gradio interface without audio dependencies.")
 
-    if agent_type == "Random":
-        agent = RandomAgent(env)
-    elif agent_type == "Buy & Hold":
-        agent = BuyAndHoldAgent(env)
-    elif agent_type == "Rule-Based":
-        agent = RuleBasedAgent(env)
-    else:
-        return "Invalid agent type!"
-
-    results = []
-    for ep in range(int(num_episodes)):
-        obs, info = env.reset(seed=ep)
-        total_reward = 0
-        steps = 0
-        done = False
-
-        while not done and steps < 120:  # Max 120 steps
-            action = agent.act(obs)
-            obs, reward, done, truncated, info = env.step(action)
-            total_reward += reward
-            steps += 1
-            done = done or truncated
-
-        final_net_worth = obs[0] * 1000000
-        results.append(f"Episode {ep+1}: {steps} steps, Reward={total_reward:.3f}, Net Worth=₹{final_net_worth:,.0f}")
-
-    return "\n".join(results)
-
-# Create Gradio interface
-with gr.Blocks(title="Real Estate Investment RL", theme=gr.themes.Soft()) as demo:
-    gr.Markdown("# 🏠 Real Estate Investment RL Environment")
-    gr.Markdown("Interactive reinforcement learning environment for real estate portfolio management.")
-
-    with gr.Tab("Manual Control"):
-        gr.Markdown("### Manual Environment Control")
         with gr.Row():
-            with gr.Column():
-                seed_input = gr.Number(label="Random Seed (optional)", value=None)
-                reset_btn = gr.Button("🔄 Reset Environment", variant="primary")
-            with gr.Column():
-                action_input = gr.Textbox(
-                    label="Action (5 numbers 0-4, comma-separated)",
-                    placeholder="0,1,2,3,4",
-                    value="0,0,0,0,0"
-                )
-                step_btn = gr.Button("▶️ Take Action", variant="secondary")
+            seed_input = gr.Number(label="Seed (optional)", value=None)
+            reset_button = gr.Button("Reset")
 
-        output_display = gr.Markdown(label="Environment State")
-
-        reset_btn.click(
-            fn=reset_environment,
-            inputs=[seed_input],
-            outputs=[output_display]
+        action_input = gr.Textbox(
+            label="Action (5 values 0-4, comma-separated)",
+            value="0,0,0,0,0",
         )
+        step_button = gr.Button("Step")
+        output_box = gr.Markdown()
 
-        step_btn.click(
-            fn=take_action,
-            inputs=[action_input],
-            outputs=[output_display]
-        )
+        reset_button.click(reset_environment, inputs=[seed_input], outputs=[output_box])
+        step_button.click(take_action, inputs=[action_input], outputs=[output_box])
 
-    with gr.Tab("Baseline Agents"):
-        gr.Markdown("### Test Baseline Agents")
-        with gr.Row():
-            agent_type = gr.Dropdown(
-                ["Random", "Buy & Hold", "Rule-Based"],
-                label="Agent Type",
-                value="Buy & Hold"
-            )
-            episodes_input = gr.Number(label="Number of Episodes", value=1, minimum=1, maximum=10)
-            run_agent_btn = gr.Button("🚀 Run Agent", variant="primary")
+    return demo
 
-        agent_output = gr.Markdown(label="Agent Results")
 
-        run_agent_btn.click(
-            fn=run_baseline_agent,
-            inputs=[agent_type, episodes_input],
-            outputs=[agent_output]
-        )
-
-    with gr.Tab("About"):
-        gr.Markdown("""
-        ## About This Environment
-
-        **Features:**
-        - Portfolio management of up to 5 properties
-        - Dynamic market regimes (Stable/Boom/Bust)
-        - Mortgage financing and leverage
-        - Risk-adjusted Sharpe ratio rewards
-        - Three distinct neighborhoods
-
-        **Actions per property:**
-        - 0: Hold
-        - 1: Buy
-        - 2: Sell
-        - 3: Refinance
-        - 4: Develop/Renovate
-
-        **Built with:** Gymnasium, NumPy, Matplotlib
-        **License:** MIT
-        """)
+demo = create_ui()
 
 if __name__ == "__main__":
-    demo.launch(server_port=7860, server_name="0.0.0.0")
+    demo.launch(server_name="0.0.0.0", server_port=7860)
