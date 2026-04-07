@@ -4,8 +4,6 @@ Interactive web interface for the Real Estate Investment RL environment.
 """
 
 import gradio as gr
-import numpy as np
-import matplotlib.pyplot as plt
 from pathlib import Path
 import sys
 
