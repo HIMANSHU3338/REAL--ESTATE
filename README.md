@@ -1,3 +1,15 @@
+---
+title: Real Estate Investment RL
+emoji: 🏠
+colorFrom: blue
+colorTo: green
+sdk: gradio
+sdk_version: 4.0.0
+app_file: app.py
+pinned: false
+license: mit
+---
+
 # 🏠 Real Estate Investment RL Environment
 
 A production-quality **Reinforcement Learning environment** for real estate portfolio management, built on **Gymnasium** and fully compliant with the **OpenEnv** submission spec.
