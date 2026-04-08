@@ -5,12 +5,17 @@ description = "Real Estate RL API for OpenEnv"
 authors = [
     { name = "Himanshu" }
 ]
+requires-python = ">=3.14"
 dependencies = [
     "fastapi",
     "uvicorn",
     "numpy",
-    "gymnasium"
+    "gymnasium",
+    "openenv-core>=0.2.0"
 ]
+
+[project.scripts]
+server = "server.app:main"
 
 [build-system]
 requires = ["setuptools", "wheel"]
