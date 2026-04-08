@@ -45,10 +45,10 @@ import json
 import os
 import sys
 import textwrap
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-from openai import OpenAI
 
 # ─── Add project root to path ────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -111,6 +111,77 @@ SYSTEM_PROMPT = textwrap.dedent("""
     Example: [0, 1, 0, 3, 0]
     No explanation, no extra text — just the JSON array.
 """).strip()
+
+
+class OpenAIProxyClient:
+    def __init__(self, base_url: str, api_key: str):
+        self.api_url = base_url.rstrip("/") + "/v1/chat/completions"
+        self.headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+        self.chat = self.Chat(self)
+
+    class Chat:
+        def __init__(self, parent: "OpenAIProxyClient"):
+            self.parent = parent
+            self.completions = self.Completions(parent)
+
+        class Completions:
+            def __init__(self, parent: "OpenAIProxyClient"):
+                self.parent = parent
+
+            def create(
+                self,
+                model: str,
+                messages: List[Dict[str, str]],
+                temperature: float,
+                max_tokens: int,
+                stream: bool = False,
+            ) -> Any:
+                payload = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "stream": stream,
+                }
+                data = json.dumps(payload).encode("utf-8")
+                request = urllib.request.Request(
+                    self.parent.api_url,
+                    data=data,
+                    headers=self.parent.headers,
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(request, timeout=30) as response:
+                        body = response.read().decode("utf-8")
+                        result = json.loads(body)
+                        return self.parent._wrap_response(result)
+                except urllib.error.HTTPError as exc:
+                    body = exc.read().decode("utf-8") if exc.fp else ""
+                    raise RuntimeError(f"HTTPError {exc.code}: {body}") from exc
+                except Exception as exc:
+                    raise
+
+    class Choice:
+        def __init__(self, data: Dict[str, Any]):
+            self.message = self.Message(data.get("message", {}))
+
+        class Message:
+            def __init__(self, data: Dict[str, Any]):
+                self.content = data.get("content")
+
+    class Response:
+        def __init__(self, data: Dict[str, Any]):
+            self.data = data
+
+        @property
+        def choices(self) -> List["OpenAIProxyClient.Choice"]:
+            return [OpenAIProxyClient.Choice(choice) for choice in self.data.get("choices", [])]
+
+    def _wrap_response(self, data: Dict[str, Any]) -> "OpenAIProxyClient.Response":
+        return OpenAIProxyClient.Response(data)
 
 
 # ─── Stdout Logging (MANDATORY FORMAT) ──────────────────────────
@@ -226,7 +297,7 @@ def build_user_prompt(
 # ─── LLM Interaction ─────────────────────────────────────────────
 
 def get_model_action(
-    client: Optional[OpenAI],
+    client: Optional["OpenAIProxyClient"],
     step: int,
     obs_info: Dict,
     last_reward: float,
@@ -321,9 +392,9 @@ def compute_score(task_name: str, episode_summary: Dict) -> float:
 # ─── Main Loop ───────────────────────────────────────────────────
 
 async def main() -> None:
-    # Initialize OpenAI client with injected credentials
+    # Initialize OpenAI proxy client with injected credentials
     try:
-        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+        client = OpenAIProxyClient(base_url=API_BASE_URL, api_key=API_KEY)
     except Exception as e:
         print(f"[DEBUG] Client init failed: {e}", flush=True)
         client = None
