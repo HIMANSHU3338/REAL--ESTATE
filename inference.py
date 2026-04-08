@@ -63,7 +63,7 @@ IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")  # Optional: for from_docker_image()
 API_BASE_URL = os.environ["API_BASE_URL"]
 API_KEY = os.environ["API_KEY"]
 
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-3.5-turbo")
 
 # ─── Task Configuration ─────────────────────────────────────────
 TASK_NAME = os.getenv("REAL_ESTATE_TASK", "portfolio-growth")
@@ -226,7 +226,7 @@ def build_user_prompt(
 # ─── LLM Interaction ─────────────────────────────────────────────
 
 def get_model_action(
-    client: OpenAI,
+    client: Optional[OpenAI],
     step: int,
     obs_info: Dict,
     last_reward: float,
@@ -234,9 +234,13 @@ def get_model_action(
     history: List[str],
 ) -> List[int]:
     """Query the LLM for the next action. Returns list of 5 ints."""
-    user_prompt = build_user_prompt(step, obs_info, last_reward, last_action, history)
+    if client is None:
+        print("[DEBUG] No client available, using fallback action", flush=True)
+        return [0, 0, 0, 0, 0]  # Default: Hold everything
 
     try:
+        user_prompt = build_user_prompt(step, obs_info, last_reward, last_action, history)
+
         completion = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
@@ -318,7 +322,11 @@ def compute_score(task_name: str, episode_summary: Dict) -> float:
 
 async def main() -> None:
     # Initialize OpenAI client with injected credentials
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    try:
+        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    except Exception as e:
+        print(f"[DEBUG] Client init failed: {e}", flush=True)
+        client = None
 
     # Initialize environment locally
     config = EnvConfig()
@@ -389,4 +397,8 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print(f"[DEBUG] Fatal error: {e}", flush=True)
+        exit(1)
