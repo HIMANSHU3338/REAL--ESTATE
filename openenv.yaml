@@ -62,9 +62,9 @@ tasks:
       type: endpoint
       metric: total_return_pct
       scoring: |
-        score = max(0.0, min(1.0, total_return_pct / 100.0))
+        score = max(0.0001, min(0.9999, total_return_pct / 100.0))
     max_steps: 120
-    reward_range: [0.0, 1.0]
+    reward_range: [0.0001, 0.9999]
 
   - name: risk-management
     description: >
@@ -75,9 +75,9 @@ tasks:
       type: endpoint
       metric: annualized_sharpe
       scoring: |
-        score = max(0.0, min(1.0, sharpe / 2.0))
+        score = max(0.0001, min(0.9999, sharpe / 2.0))
     max_steps: 120
-    reward_range: [0.0, 1.0]
+    reward_range: [0.0001, 0.9999]
 
   - name: market-timing
     description: >
@@ -91,9 +91,9 @@ tasks:
         return_score = max(0.0, min(0.5, total_return_pct / 200.0))
         dd_score = max(0.0, 0.3 * (1.0 - max_drawdown_pct / 50.0))
         activity_score = min(0.2, (total_bought + total_sold) * 0.02)
-        score = max(0.0, min(1.0, return_score + dd_score + activity_score))
+        score = max(0.0001, min(0.9999, return_score + dd_score + activity_score))
     max_steps: 120
-    reward_range: [0.0, 1.0]
+    reward_range: [0.0001, 0.9999]
 
 # ─── Metadata ────────────────────────────────────────────────────
 metadata:
