@@ -1,0 +1,17 @@
+[project]
+name = "real-estate-rl"
+version = "0.1.0"
+description = "Real Estate RL API for OpenEnv"
+authors = [
+    { name = "Himanshu" }
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "numpy",
+    "gymnasium"
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
