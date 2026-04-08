@@ -40,15 +40,11 @@ STDOUT FORMAT
     [END] success=true steps=120 score=0.85 rewards=0.00,0.01,...
 """
 
-import asyncio
 import json
 import os
 import sys
-import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-from openai import OpenAI
 
 # ─── Add project root to path ────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -58,17 +54,11 @@ from env.config import EnvConfig, Regime
 
 # ─── Environment Variables (MANDATORY) ───────────────────────────
 IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")  # Optional: for from_docker_image()
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 
 # ─── Task Configuration ─────────────────────────────────────────
 TASK_NAME = os.getenv("REAL_ESTATE_TASK", "portfolio-growth")
 BENCHMARK = os.getenv("REAL_ESTATE_BENCHMARK", "real_estate_rl")
 MAX_STEPS = 120       # 10 years of monthly decisions
-TEMPERATURE = 0.7
-MAX_TOKENS = 300
 
 # ─── Grading Thresholds ────────────────────────────────────────
 # These match the graders in openenv.yaml and server/app.py
@@ -86,29 +76,6 @@ TASK_CONFIGS = {
         "description": "Maximize returns by timing market regime changes",
     },
 }
-
-# ─── System Prompt ──────────────────────────────────────────────
-SYSTEM_PROMPT = textwrap.dedent("""
-    You are an expert real estate investment AI managing a portfolio in the Indian real estate market.
-
-    ENVIRONMENT:
-    - You manage up to 5 property slots across 3 neighborhoods (South Mumbai, Bandra, Navi Mumbai).
-    - Each month you choose one action per slot: 0=Hold, 1=Buy, 2=Sell, 3=Raise Rent, 4=Lower Rent.
-    - The market cycles through BOOM, STABLE, and RECESSION regimes.
-    - Starting capital: ₹2 Crore (₹20,000,000).
-
-    STRATEGY GUIDELINES:
-    - Buy during RECESSION (low prices), sell during BOOM (high prices).
-    - Adjust rent based on occupancy: lower rent if occupancy < 70%, raise if > 90%.
-    - Keep cash reserves for opportunities and to avoid foreclosure.
-    - Diversify across neighborhoods.
-    - Monitor interest rates — high rates mean expensive mortgages.
-
-    RESPONSE FORMAT:
-    You must respond with ONLY a JSON array of exactly 5 integers, each in [0,4].
-    Example: [0, 1, 0, 3, 0]
-    No explanation, no extra text — just the JSON array.
-""").strip()
 
 
 # ─── Stdout Logging (MANDATORY FORMAT) ──────────────────────────
@@ -134,153 +101,40 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
     )
 
 
-# ─── Observation Parsing ─────────────────────────────────────────
+# ─── Rule-Based Action Generation ─────────────────────────────────
 
-def parse_observation(obs, step_count: int, config: EnvConfig) -> Dict[str, Any]:
-    """Parse the 69-dim observation vector into a human-readable dict for the LLM."""
-    result = {}
+def get_model_action(
+    obs: List[float],
+    step: int,
+) -> List[int]:
+    """Generate actions using deterministic rules based on observation."""
+    # Get market regime: obs[2:5] is one-hot for BOOM, STABLE, RECESSION
+    regime_idx = int(obs[2:5].index(1.0))  # 0=BOOM, 1=STABLE, 2=RECESSION
 
-    # Global features (indices 0-13)
-    result["cash_level"] = f"{obs[0]:.2%}"  # normalized
-    result["net_worth_level"] = f"{obs[1]:.2%}"  # normalized
-
-    # Regime one-hot (indices 2-4)
-    regime_idx = int(obs[2:5].argmax())
-    result["market_regime"] = Regime.NAMES[regime_idx]
-
-    # Market features
-    result["interest_rate_norm"] = f"{obs[5]:.2f}"
-    result["demand"] = f"{obs[6]:.1%}"
-    result["inflation_norm"] = f"{obs[7]:.2f}"
-
-    # Time
-    result["month"] = step_count
-    result["time_remaining"] = f"{obs[10]:.1%}"
-
-    # Property slots (5 slots, 11 features each, starting at index 14)
-    properties = []
+    actions = []
     for slot in range(5):
         offset = 14 + slot * 11
         occupied = obs[offset] > 0.5
 
-        if occupied:
-            properties.append({
-                "slot": slot,
-                "occupied": True,
-                "value_norm": f"{obs[offset + 1]:.3f}",
-                "rent_norm": f"{obs[offset + 2]:.3f}",
-                "occupancy": f"{obs[offset + 3]:.0%}",
-                "mortgage_norm": f"{obs[offset + 4]:.3f}",
-            })
+        if not occupied:
+            # Empty slot: Buy during RECESSION (regime_idx == 2)
+            action = 1 if regime_idx == 2 else 0
         else:
-            properties.append({"slot": slot, "occupied": False})
+            # Occupied slot
+            occupancy = obs[offset + 3]  # Occupancy rate
 
-    result["properties"] = properties
-    return result
+            if regime_idx == 0:  # BOOM: Sell
+                action = 2
+            elif occupancy < 0.7:  # Low occupancy: Lower rent
+                action = 4
+            elif occupancy > 0.9:  # High occupancy: Raise rent
+                action = 3
+            else:  # Hold
+                action = 0
 
+        actions.append(action)
 
-def build_user_prompt(
-    step: int,
-    obs_info: Dict,
-    last_reward: float,
-    last_action: Optional[List[int]],
-    history: List[str],
-) -> str:
-    """Build a concise prompt for the LLM with current state."""
-    props_str = ""
-    for p in obs_info["properties"]:
-        if p["occupied"]:
-            props_str += (
-                f"  Slot {p['slot']}: OCCUPIED | Value={p['value_norm']} | "
-                f"Rent={p['rent_norm']} | Occupancy={p['occupancy']} | "
-                f"Mortgage={p['mortgage_norm']}\n"
-            )
-        else:
-            props_str += f"  Slot {p['slot']}: EMPTY\n"
-
-    history_block = "\n".join(history[-5:]) if history else "None"
-
-    return textwrap.dedent(f"""
-        Month: {step}/{MAX_STEPS}
-        Market Regime: {obs_info['market_regime']}
-        Cash Level: {obs_info['cash_level']}
-        Net Worth Level: {obs_info['net_worth_level']}
-        Demand: {obs_info['demand']}
-        Interest Rate: {obs_info['interest_rate_norm']}
-        Time Remaining: {obs_info['time_remaining']}
-
-        Properties:
-        {props_str}
-        Last Action: {last_action}
-        Last Reward: {last_reward:.4f}
-
-        Recent History:
-        {history_block}
-
-        Choose your next action — respond with ONLY a JSON array of 5 integers [0-4].
-    """).strip()
-
-
-# ─── LLM Interaction ─────────────────────────────────────────────
-
-def get_model_action(
-    client: OpenAI,
-    step: int,
-    obs_info: Dict,
-    last_reward: float,
-    last_action: Optional[List[int]],
-    history: List[str],
-) -> List[int]:
-    """Query the LLM for the next action. Returns list of 5 ints."""
-    user_prompt = build_user_prompt(step, obs_info, last_reward, last_action, history)
-
-    try:
-        completion = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=TEMPERATURE,
-            max_tokens=MAX_TOKENS,
-            stream=False,
-        )
-        text = (completion.choices[0].message.content or "").strip()
-
-        # Parse the JSON array from the response
-        action = _parse_action(text)
-        return action
-
-    except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", flush=True)
-        return [0, 0, 0, 0, 0]  # Default: Hold everything
-
-
-def _parse_action(text: str) -> List[int]:
-    """Parse LLM response into a valid action array."""
-    # Try direct JSON parse
-    try:
-        # Extract JSON array if embedded in text
-        import re
-        match = re.search(r'\[[\s\d,]+\]', text)
-        if match:
-            action = json.loads(match.group())
-            if isinstance(action, list) and len(action) == 5:
-                return [max(0, min(4, int(a))) for a in action]
-    except (json.JSONDecodeError, ValueError):
-        pass
-
-    # Fallback: try to find 5 numbers
-    try:
-        import re
-        numbers = re.findall(r'\d', text)
-        if len(numbers) >= 5:
-            return [max(0, min(4, int(n))) for n in numbers[:5]]
-    except Exception:
-        pass
-
-    # Ultimate fallback: Hold everything
-    return [0, 0, 0, 0, 0]
+    return actions
 
 
 # ─── Grading ─────────────────────────────────────────────────────
@@ -314,9 +168,7 @@ def compute_score(task_name: str, episode_summary: Dict) -> float:
 
 # ─── Main Loop ───────────────────────────────────────────────────
 
-async def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-
+def main() -> None:
     # Initialize environment locally
     config = EnvConfig()
     env = RealEstateEnv(config=config)
@@ -335,13 +187,8 @@ async def main() -> None:
         last_reward = 0.0
 
         for step in range(1, MAX_STEPS + 1):
-            # Parse observation for the LLM
-            obs_info = parse_observation(obs, step, config)
-
-            # Get action from LLM
-            action = get_model_action(
-                client, step, obs_info, last_reward, last_action, history
-            )
+            # Get action from rule-based function
+            action = get_model_action(obs, step)
 
             # Take step in environment
             obs, reward, terminated, truncated, info = env.step(
@@ -386,4 +233,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
