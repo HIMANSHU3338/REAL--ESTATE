@@ -48,6 +48,7 @@ IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")  # Optional: for from_docker_image()
 # ─── Task Configuration ─────────────────────────────────────────
 TASK_NAME = os.getenv("REAL_ESTATE_TASK", "portfolio-growth")
 BENCHMARK = os.getenv("REAL_ESTATE_BENCHMARK", "real_estate_rl")
+MODEL_NAME = "rule-based-agent"  # Rule-based agent, no external dependencies
 MAX_STEPS = 120       # 10 years of monthly decisions
 
 # ─── Grading Thresholds ────────────────────────────────────────
@@ -223,4 +224,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"[DEBUG] Fatal error: {e}", flush=True)
+        exit(1)
