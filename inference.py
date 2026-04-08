@@ -2,18 +2,8 @@
 Inference Script — Real Estate RL Environment
 ===================================
 MANDATORY
-- Before submitting, ensure the following variables are defined in your environment configuration:
-    API_BASE_URL   The API endpoint for the LLM.
-    MODEL_NAME     The model identifier to use for inference.
-    HF_TOKEN       Your Hugging Face / API key.
-    LOCAL_IMAGE_NAME The name of the local image to use for the environment if you are using from_docker_image()
-
-- Defaults are set only for API_BASE_URL and MODEL_NAME
-    API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-    MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-
 - The inference script must be named `inference.py` and placed in the root directory of the project
-- Participants must use OpenAI Client for all LLM calls using above variables
+- This script uses a rule-based agent without external API calls
 
 STDOUT FORMAT
 - The script must emit exactly three line types to stdout, in this order:
@@ -33,7 +23,7 @@ STDOUT FORMAT
     - Each task should return score in [0, 1]
 
   Example:
-    [START] task=portfolio-growth env=real_estate_rl model=Qwen2.5-72B-Instruct
+    [START] task=portfolio-growth env=real_estate_rl model=rule-based-agent
     [STEP] step=1 action=[0,1,0,0,0] reward=0.00 done=false error=null
     [STEP] step=2 action=[0,0,0,3,0] reward=0.01 done=false error=null
     ...
